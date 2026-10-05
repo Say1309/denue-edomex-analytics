@@ -3,23 +3,39 @@ import duckdb
 import pandas as pd
 import plotly.express as px
 
-# Configuración de la página
+# -----------------------------------------------------------------------------
+# Configuración Visual de la Aplicación
+# -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Analizador Comercial Edomex | DENUE",
-    page_icon="📊",
-    layout="wide"
+    page_title="Market Intelligence | DENUE Edomex",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-st.title("📊 Analizador de Competencia y Oferta Comercial (Estado de México)")
+# Estilos CSS personalizados
 st.markdown("""
-Esta herramienta permite evaluar la estructura económica y densidad comercial de **uno o varios municipios colindantes** 
-del Estado de México a partir del dataset procesado del **DENUE (INEGI)**.
-""")
+    <style>
+    .main { padding-top: 1rem; }
+    .stMetric {
+        background-color: #1e293b;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #334155;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# Cargar datos usando DuckDB (Lectura ultra rápida de Parquet)
+st.title("📈 Intelligence & Market Benchmarking")
+st.caption("Análisis comparativo de densidad comercial y viabilidad de mercado basada en datos del DENUE (INEGI) - Estado de México")
+
+# -----------------------------------------------------------------------------
+# Carga Eficiente con DuckDB
+# -----------------------------------------------------------------------------
 @st.cache_data
 def load_data():
     con = duckdb.connect()
+    # Lectura directa desde el Parquet optimizado
     df = con.execute("SELECT * FROM 'data/denue_edomex_para_app.parquet'").fetchdf()
     con.close()
     return df
@@ -27,102 +43,171 @@ def load_data():
 df_base = load_data()
 
 # -----------------------------------------------------------------------------
-# Filtros en Barra Lateral
+# Barra Lateral - Filtros
 # -----------------------------------------------------------------------------
-st.sidebar.header("🎯 Filtros de Selección")
+st.sidebar.header("🎯 Parámetros del Análisis")
 
-# Lista ordenada de municipios
 municipios_disponibles = sorted(df_base["municipio"].dropna().unique())
 
-# Selector múltiple de municipios (por defecto Cocotitlán, Chalco e Ixtapaluca)
-municipios_default = [m for m in municipios_disponibles if m in ["Cocotitlán", "Chalco", "Ixtapaluca"]]
-if not municipios_default:
-    municipios_default = municipios_disponibles[:2]
+# Municipios sugeridos por defecto
+defaults_mun = [m for m in ["Cocotitlán", "Chalco", "Ixtapaluca"] if m in municipios_disponibles]
+if not defaults_mun:
+    defaults_mun = municipios_disponibles[:2]
 
 municipios_sel = st.sidebar.multiselect(
-    "Selecciona 1, 2 o más municipios a comparar:",
+    "1. Selecciona los municipios a comparar:",
     options=municipios_disponibles,
-    default=municipios_default
+    default=defaults_mun
 )
 
 if not municipios_sel:
-    st.warning("Por favor selecciona al menos un municipio en el menú lateral.")
+    st.info("👋 Por favor selecciona al menos un municipio en el menú lateral para comenzar.")
     st.stop()
 
-# Filtrar dataframe
-df_filtrado = df_base[df_base["municipio"].isin(municipios_sel)]
+# Filtrado inicial por municipio
+df_mun = df_base[df_base["municipio"].isin(municipios_sel)]
+
+# Filtro dinámico por Giro / Actividad
+giros_disponibles = sorted(df_mun["nombre_act"].dropna().unique())
+giros_sel = st.sidebar.multiselect(
+    "2. Filtrar por Giros Específicos (Opcional):",
+    options=giros_disponibles,
+    default=[],
+    help="Deja este campo vacío para analizar la totalidad de los giros económicos."
+)
+
+if giros_sel:
+    df_filtrado = df_mun[df_mun["nombre_act"].isin(giros_sel)]
+else:
+    df_filtrado = df_mun.copy()
 
 # -----------------------------------------------------------------------------
-# KPIs Principales
+# Panel Principal - KPIs
 # -----------------------------------------------------------------------------
-col1, col2, col3 = st.columns(3)
 total_unidades = df_filtrado["total_establecimientos"].sum()
 total_giros = df_filtrado["nombre_act"].nunique()
 mun_count = len(municipios_sel)
 
-col1.metric("Unidades Económicas Totales", f"{total_unidades:,}")
-col2.metric("Giros Comerciales Distintos", f"{total_giros:,}")
-col3.metric("Municipios Seleccionados", f"{mun_count}")
+c1, c2, c3 = st.columns(3)
+c1.metric("Establecimientos Totales", f"{total_unidades:,}")
+c2.metric("Giros Representados", f"{total_giros:,}")
+c3.metric("Municipios en Comparativa", f"{mun_count}")
 
 st.markdown("---")
 
 # -----------------------------------------------------------------------------
-# Comparativa por Giro Económico (Top 15)
+# Estructura por Pestañas (Tabs)
 # -----------------------------------------------------------------------------
-st.subheader("🏆 Top 15 Giros Comerciales con Mayor Competencia")
-
-top_giros = (
-    df_filtrado.groupby(["municipio", "nombre_act"])["total_establecimientos"]
-    .sum()
-    .reset_index()
-    .sort_values(by="total_establecimientos", ascending=False)
-)
-
-top_15_nombres = (
-    top_giros.groupby("nombre_act")["total_establecimientos"]
-    .sum()
-    .nlargest(15)
-    .index
-)
-
-df_top15 = top_giros[top_giros["nombre_act"].isin(top_15_nombres)]
-
-fig_bar = px.bar(
-    df_top15,
-    x="total_establecimientos",
-    y="nombre_act",
-    color="municipio",
-    barmode="group",
-    orientation="h",
-    title="Comparativa de Negocios por Municipio y Giro Económico",
-    labels={"total_establecimientos": "Número de Negocios", "nombre_act": "Giro / Actividad", "municipio": "Municipio"},
-    height=600
-)
-fig_bar.update_layout(yaxis={"categoryorder": "total ascending"})
-st.plotly_chart(fig_bar, use_container_width=True)
+tab1, tab2, tab3 = st.tabs(["📊 Panorama General", "🔍 Análisis por Giro", "📋 Vista de Datos"])
 
 # -----------------------------------------------------------------------------
-# Desglose por Tamaño de Empresa
+# TAB 1: PANORAMA GENERAL
 # -----------------------------------------------------------------------------
-st.subheader("🏢 Distribución por Tamaño de Empresa")
+with tab1:
+    st.subheader("Top Giros Comerciales con Mayor Competencia")
+    
+    # Agregación Top 15
+    top_giros = (
+        df_filtrado.groupby(["municipio", "nombre_act"])["total_establecimientos"]
+        .sum()
+        .reset_index()
+    )
+    
+    top_15_nombres = (
+        top_giros.groupby("nombre_act")["total_establecimientos"]
+        .sum()
+        .nlargest(12)
+        .index
+    )
+    
+    df_top12 = top_giros[top_giros["nombre_act"].isin(top_15_nombres)]
+    
+    fig_bar = px.bar(
+        df_top12,
+        x="total_establecimientos",
+        y="nombre_act",
+        color="municipio",
+        barmode="group",
+        orientation="h",
+        labels={
+            "total_establecimientos": "Número de Negocios",
+            "nombre_act": "Giro Comercial",
+            "municipio": "Municipio"
+        },
+        height=500,
+        template="plotly_dark"
+    )
+    fig_bar.update_layout(yaxis={"categoryorder": "total ascending"}, margin=dict(l=20, r=20, t=30, b=20))
+    st.plotly_chart(fig_bar, use_container_width=True)
 
-df_tamano = (
-    df_filtrado.groupby(["municipio", "tamano_empresa"])["total_establecimientos"]
-    .sum()
-    .reset_index()
-)
+    # Distribución por tamaño de empresa
+    st.subheader("Composición por Tamaños de Unidad Económica")
+    df_tamano = (
+        df_filtrado.groupby(["municipio", "tamano_empresa"])["total_establecimientos"]
+        .sum()
+        .reset_index()
+    )
+    
+    fig_stack = px.bar(
+        df_tamano,
+        x="municipio",
+        y="total_establecimientos",
+        color="tamano_empresa",
+        barmode="stack",
+        labels={
+            "total_establecimientos": "Cantidad de Negocios",
+            "tamano_empresa": "Estrato de Personal",
+            "municipio": "Municipio"
+        },
+        height=400,
+        template="plotly_dark"
+    )
+    st.plotly_chart(fig_stack, use_container_width=True)
 
-fig_pie = px.bar(
-    df_tamano,
-    x="municipio",
-    y="total_establecimientos",
-    color="tamano_empresa",
-    title="Composición por Tamaño de Unidad Económica",
-    labels={"total_establecimientos": "Total Establecimientos", "tamano_empresa": "Tamaño", "municipio": "Municipio"},
-    barmode="stack"
-)
-st.plotly_chart(fig_pie, use_container_width=True)
+# -----------------------------------------------------------------------------
+# TAB 2: ANÁLISIS DETALLADO POR GIRO
+# -----------------------------------------------------------------------------
+with tab2:
+    st.subheader("Comparativa Específica entre Municipios")
+    
+    giro_foco = st.selectbox(
+        "Selecciona un Giro Específico para comparar la presencia exacta:",
+        options=sorted(df_mun["nombre_act"].dropna().unique())
+    )
+    
+    df_foco = df_mun[df_mun["nombre_act"] == giro_foco]
+    resumen_foco = df_foco.groupby("municipio")["total_establecimientos"].sum().reset_index()
+    
+    col_chart, col_stats = st.columns([2, 1])
+    
+    with col_chart:
+        fig_foco = px.pie(
+            resumen_foco,
+            names="municipio",
+            values="total_establecimientos",
+            title=f"Distribución porcentual de: '{giro_foco}'",
+            hole=0.4,
+            template="plotly_dark"
+        )
+        st.plotly_chart(fig_foco, use_container_width=True)
+        
+    with col_stats:
+        st.markdown(f"#### 💡 Métricas Clave: *{giro_foco}*")
+        for idx, row in resumen_foco.iterrows():
+            st.metric(f"Negocios en {row['municipio']}", f"{row['total_establecimientos']:,}")
 
-# Tabla de Datos
-with st.expander("📄 Ver Tabla de Datos Completa"):
-    st.dataframe(df_filtrado)
+# -----------------------------------------------------------------------------
+# TAB 3: VISTA DE DATOS Y DESCARGA
+# -----------------------------------------------------------------------------
+with tab3:
+    st.subheader("Explorador de Datos Filtrados")
+    st.dataframe(df_filtrado, use_container_width=True, height=400)
+    
+    # Botón para descargar CSV directamente desde la app
+    csv_data = df_filtrado.to_csv(index=False, encoding="utf-8-sig")
+    st.download_button(
+        label="📥 Descargar esta selección en CSV",
+        data=csv_data,
+        file_name="analisis_mercado_edomex.csv",
+        mime="text/csv"
+    )

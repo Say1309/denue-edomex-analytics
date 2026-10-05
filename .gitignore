@@ -1,0 +1,20 @@
+# Entorno virtual y cachés
+venv/
+__pycache__/
+.pytest_cache/
+
+# Archivos pesados y ejecutables del DENUE que NO deben ir a GitHub
+*.exe
+*.xml
+*.zip
+*.rar
+DescargaMasivaApp.exe
+DescargaMasivaOD.xml
+
+# Datos pesados crudos o intermedios
+data/*.csv
+data/resumen_*
+Datos/
+
+# Excepción: SÍ queremos subir el Parquet procesado para la App
+!data/denue_edomex_para_app.parquet
