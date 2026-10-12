@@ -18,3 +18,5 @@ Datos/
 
 # Excepción: SÍ queremos subir el Parquet procesado para la App
 !data/denue_edomex_para_app.parquet
+data/
+*.duckdb

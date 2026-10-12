@@ -1,0 +1,7 @@
+﻿columna,tipo_dato,valores_no_nulos,ejemplo_valor
+cve_mun_norm,str,94888,106
+municipio,str,94888,Toluca
+codigo_act,str,94888,466212
+nombre_act,str,94887,Comercio Al Por Menor De Teléfonos Y Otros Aparatos De Comunicación
+tamano_empresa,str,94888,Microempresa (1-10)
+total_establecimientos,int64,94888,5174
